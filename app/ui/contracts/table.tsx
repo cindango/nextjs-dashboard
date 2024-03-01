@@ -1,17 +1,14 @@
-import Image from 'next/image';
 import { UpdateInvoice, DeleteInvoice } from '@/app/ui/contracts/buttons';
-import InvoiceStatus from '@/app/ui/invoices/status';
-import { formatDateToLocal, formatCurrency } from '@/app/lib/utils';
-import { fetchFilteredInvoicesSupabase } from '@/app/lib/data';
+import { fetchFilteredContracts } from '@/app/lib/data';
 
-export default async function InvoicesTable({
+export default async function ContractsTable({
   query,
   currentPage,
 }: {
   query: string;
   currentPage: number;
 }) {
-  const contracts = await fetchFilteredInvoicesSupabase(query, currentPage);
+  const contracts = await fetchFilteredContracts(query, currentPage);
 
   return (
     <div className="mt-6 flow-root">

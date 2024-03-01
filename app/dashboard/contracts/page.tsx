@@ -1,7 +1,7 @@
 import Pagination from '@/app/ui/contracts/pagination';
 import Search from '@/app/ui/search';
 import Table from '@/app/ui/contracts/table';
-import { fetchInvoicesPagesSupabase } from '@/app/lib/data';
+import { fetchContractsPages, fetchFilteredContracts } from '@/app/lib/data';
 import { UploadContract } from '@/app/ui/contracts/buttons';
 import { ContractsTableSkeleton } from '@/app/ui/skeletons';
 import { Suspense } from 'react';
@@ -17,7 +17,7 @@ export default async function Page({
   const query = searchParams?.query || '';
   const currentPage = Number(searchParams?.page) || 1;
 
-  const totalPages = await fetchInvoicesPagesSupabase(query);
+  const totalPages = await fetchContractsPages(query);
 
   return (
     <div className="w-full">
@@ -25,7 +25,7 @@ export default async function Page({
         <h1 className={`text-5xl`}>Contracts</h1>
       </div>
       <div className="mt-4 flex items-center justify-between gap-2 md:mt-8">
-        <Search placeholder="Search invoices..." />
+        <Search placeholder="Search contracts..." />
         <UploadContract />
       </div>
       <Suspense key={query + currentPage} fallback={<ContractsTableSkeleton />}>

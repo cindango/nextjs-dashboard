@@ -8,6 +8,7 @@ import {
   LatestInvoiceRaw,
   User,
   Revenue,
+  ContractsTable,
 } from './definitions';
 import { formatCurrency } from './utils';
 import { unstable_noStore as noStore } from 'next/cache';
@@ -97,39 +98,33 @@ const supabaseClient = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY as string,
 );
 
-export async function fetchFilteredInvoicesSupabase(
+const ITEMS_PER_PAGE = 6;
+
+export async function fetchFilteredContracts(
   query: string,
   currentPage: number,
-): Promise<InvoicesTable[]> {
+): Promise<ContractsTable[]> {
   noStore();
   const offset = (currentPage - 1) * ITEMS_PER_PAGE;
+  let contracts: ContractsTable[] = []; // Initialize contracts as an empty array of ContractsTable type
 
-  let { data: contracts, error } = await supabaseClient
-    .from<InvoicesTable>('contracts')
-    .select('id, vendor_id (name)')
-    .order('updated_at', { ascending: false })
-    .range(offset, offset + ITEMS_PER_PAGE - 1);
+  try {
+    if (query) {
+      // Fetch vendor IDs matching the query
+      let { data: vendorIds, error: vendorError } = await supabaseClient
+        .from('vendors')
+        .select('id')
+        .ilike('name', `%${query}%`);
 
-  console.log('Fetched invoices:', contracts);
+      if (vendorError || !vendorIds || vendorIds.length === 0) {
+        console.error('Supabase Error:', vendorError);
+        return []; // Return an empty array if there's an error or no vendors found
+      }
 
-  if (query) {
-    let { data: vendorIds, error: vendorError } = await supabaseClient
-      .from('vendors')
-      .select('id')
-      .ilike('name', `%${query}%`);
-
-    if (vendorError) {
-      console.error('Supabase Error:', vendorError);
-      throw new Error('Failed to fetch vendor IDs from Supabase.');
-    }
-
-    const vendorIdQuery = vendorIds.map((vendor) => vendor.id).join(', ');
-
-    // If there are matching vendors, fetch their contracts
-    if (vendorIds.length > 0) {
+      // Fetch contracts for those vendor IDs
       let { data: matchingContracts, error: contractsError } =
         await supabaseClient
-          .from<InvoicesTable>('contracts')
+          .from('contracts')
           .select('id, vendor_id (name)')
           .in(
             'vendor_id',
@@ -140,71 +135,54 @@ export async function fetchFilteredInvoicesSupabase(
 
       if (contractsError) {
         console.error('Supabase Error:', contractsError);
-        throw new Error('Failed to fetch matching contracts from Supabase.');
+        return []; // Return an empty array if there's an error
       }
 
-      contracts = matchingContracts;
+      if (matchingContracts) {
+        contracts = matchingContracts.map((contract) => ({
+          ...contract,
+          vendor_id:
+            contract.vendor_id.length > 0 ? contract.vendor_id[0] : null,
+        }));
+      } else {
+        contracts = [];
+      }
     } else {
-      // If no vendors match the query, return an empty array
-      contracts = [];
+      // Fetch all contracts if no query is specified
+      let { data: allContracts, error } = await supabaseClient
+        .from('contracts')
+        .select('id, vendor_id (name)')
+        .order('updated_at', { ascending: false })
+        .range(offset, offset + ITEMS_PER_PAGE - 1);
+
+      if (error) {
+        console.error('Supabase Error:', error);
+        return []; // Return an empty array if there's an error
+      }
+
+      contracts = allContracts
+        ? allContracts.map((contract) => ({
+            ...contract,
+            vendor_id: contract.vendor_id ? contract.vendor_id[0] : null,
+          }))
+        : [];
     }
-  }
-
-  if (error) {
-    console.error('Supabase Error:', error);
-    throw new Error('Failed to fetch invoices from Supabase.');
-  }
-
-  return contracts;
-}
-
-const ITEMS_PER_PAGE = 6;
-
-export async function fetchFilteredInvoices(
-  query: string,
-  currentPage: number,
-) {
-  noStore();
-  const offset = (currentPage - 1) * ITEMS_PER_PAGE;
-
-  try {
-    const invoices = await sql<InvoicesTable>`
-      SELECT
-        invoices.id,
-        invoices.amount,
-        invoices.date,
-        invoices.status,
-        customers.name,
-        customers.email,
-        customers.image_url
-      FROM invoices
-      JOIN customers ON invoices.customer_id = customers.id
-      WHERE
-        customers.name ILIKE ${`%${query}%`} OR
-        customers.email ILIKE ${`%${query}%`} OR
-        invoices.amount::text ILIKE ${`%${query}%`} OR
-        invoices.date::text ILIKE ${`%${query}%`} OR
-        invoices.status ILIKE ${`%${query}%`}
-      ORDER BY invoices.date DESC
-      LIMIT ${ITEMS_PER_PAGE} OFFSET ${offset}
-    `;
-
-    return invoices.rows;
   } catch (error) {
-    console.error('Database Error:', error);
-    throw new Error('Failed to fetch invoices.');
+    console.error('Error fetching contracts:', error);
+    return []; // Return an empty array in case of any unforeseen errors
   }
+
+  return contracts; // Return the fetched contracts
 }
-export async function fetchInvoicesPagesSupabase(
-  query: string,
-): Promise<number> {
+
+export async function fetchContractsPages(query: string): Promise<number> {
   noStore();
   try {
     let { count } = await supabaseClient
       .from('contracts')
       .select('id', { count: 'exact', head: true });
 
-    const totalPages = Math.ceil(count / ITEMS_PER_PAGE);
+    const totalPages = Math.ceil((count || 0) / ITEMS_PER_PAGE);
     return totalPages;
   } catch (error) {
     console.error('Supabase Error:', error);

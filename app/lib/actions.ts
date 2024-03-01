@@ -206,7 +206,7 @@ export async function uploadContractPDF(file: File) {
 
   // If the upload and insert are successful, return the file path and contract details
   return {
-    filePath: uploadData?.Key,
+    filePath: uploadData,
     contractDetails: contractData,
     message: 'PDF uploaded and contract details recorded successfully.',
   };

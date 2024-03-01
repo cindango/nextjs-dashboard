@@ -5,9 +5,7 @@ import {
   User,
   createClientComponentClient,
 } from '@supabase/auth-helpers-nextjs';
-import UploadContract from '@/app/ui/contracts/contract';
 import Avatar from './avatar';
-import Contract from './pdf';
 
 export default function AccountForm({ user }: { user: User | null }) {
   const supabase = createClientComponentClient<Database>();
@@ -21,10 +19,14 @@ export default function AccountForm({ user }: { user: User | null }) {
     try {
       setLoading(true);
 
+      if (!user?.id) {
+        throw new Error('User ID is undefined');
+      }
+
       const { data, error, status } = await supabase
         .from('profiles')
         .select(`full_name, username, website, avatar_url`)
-        .eq('id', user?.id)
+        .eq('id', user.id)
         .single();
 
       if (error && status !== 406) {
@@ -84,13 +86,6 @@ export default function AccountForm({ user }: { user: User | null }) {
 
   return (
     <div className="form-widget">
-      <Contract
-        uid={user.id}
-        onUpload={(url) => {
-          updateContract({ file_url: url });
-        }}
-      />
-
       <div>
         <label htmlFor="email">Email</label>
         <input id="email" type="text" value={user?.email} disabled />

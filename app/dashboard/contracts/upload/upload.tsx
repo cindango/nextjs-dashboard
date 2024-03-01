@@ -1,6 +1,6 @@
 'use client';
 import React, { useEffect, useState } from 'react';
-import { Database } from '../database.types';
+import { Database } from '@/app/supabase';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import Image from 'next/image';
 type Contracts = Database['public']['Tables']['contract_documents']['Row'];
@@ -12,11 +12,10 @@ export default function UploadContract({
   onUpload,
 }: {
   uid: string;
-  url: Contracts['file_url'];
-  onUpload: (url: string) => void;
+  url?: Contracts['file_path'];
+  onUpload?: (url: string) => void;
 }) {
   const supabase = createClientComponentClient<Database>();
-  const [fileURL, setFileURL] = useState<Contracts['file_url']>(url);
   const [uploading, setUploading] = useState(false);
   const router = useRouter();
 
@@ -45,7 +44,7 @@ export default function UploadContract({
           .insert([
             {
               user_id: uid,
-              updated_at: new Date(),
+              updated_at: new Date().toISOString(),
             },
           ])
           .select('*');
@@ -65,7 +64,7 @@ export default function UploadContract({
             {
               user_id: uid,
               file_path: filePath,
-              updated_at: new Date(),
+              updated_at: new Date().toISOString(),
               contract_id: contractData[0].id,
             },
           ]);
@@ -76,8 +75,14 @@ export default function UploadContract({
 
       const uploadedFilePaths = await Promise.all(uploadPromises);
     } catch (error) {
-      console.log(error);
-      alert('Error uploading contracts: ' + error.message);
+      let errorMessage: string;
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else {
+        errorMessage = String(error); // or a default error message
+      }
+      console.log(errorMessage);
+      alert('Error uploading contracts: ' + errorMessage);
     } finally {
       setUploading(false);
       router.push('/dashboard/contracts');

@@ -1,10 +1,9 @@
-import Form from '@/app/ui/contracts/upload-form';
 import Breadcrumbs from '@/app/ui/contracts/breadcrumbs';
 import { fetchCustomers } from '@/app/lib/data';
 import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
-import { Database } from '../database.types';
-import UploadForm from './upload-form';
+import { Database } from '@/app/supabase';
+import UploadContract from './upload';
 
 export default async function Page() {
   const customers = await fetchCustomers();
@@ -13,6 +12,10 @@ export default async function Page() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
+
+  if (!user) {
+    return <div>Loading...</div>; // or handle the null case appropriately
+  }
 
   return (
     <main>
@@ -26,7 +29,7 @@ export default async function Page() {
           },
         ]}
       />
-      <UploadForm user={user} />
+      <UploadContract uid={user.id} />
     </main>
   );
 }
