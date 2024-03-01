@@ -5,6 +5,9 @@ import { fetchContractsPages, fetchFilteredContracts } from '@/app/lib/data';
 import { UploadContract } from '@/app/ui/contracts/buttons';
 import { ContractsTableSkeleton } from '@/app/ui/skeletons';
 import { Suspense } from 'react';
+import { createClient } from '@/utils/supabase/server';
+import { QueryResult, QueryData, QueryError } from '@supabase/supabase-js';
+import React from 'react';
 
 export default async function Page({
   searchParams,

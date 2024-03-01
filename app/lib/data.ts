@@ -1,5 +1,5 @@
 import { sql } from '@vercel/postgres';
-import { createClient } from '@supabase/supabase-js';
+import { createClient } from '@/utils/supabase/server';
 import {
   CustomerField,
   CustomersTableType,
@@ -93,10 +93,7 @@ export async function fetchCardData() {
   }
 }
 
-const supabaseClient = createClient(
-  process.env.SUPABASE_URL as string,
-  process.env.SUPABASE_SERVICE_ROLE_KEY as string,
-);
+const supabase = createClient();
 
 const ITEMS_PER_PAGE = 6;
 
@@ -111,7 +108,7 @@ export async function fetchFilteredContracts(
   try {
     if (query) {
       // Fetch vendor IDs matching the query
-      let { data: vendorIds, error: vendorError } = await supabaseClient
+      let { data: vendorIds, error: vendorError } = await supabase
         .from('vendors')
         .select('id')
         .ilike('name', `%${query}%`);
@@ -122,16 +119,15 @@ export async function fetchFilteredContracts(
       }
 
       // Fetch contracts for those vendor IDs
-      let { data: matchingContracts, error: contractsError } =
-        await supabaseClient
-          .from('contracts')
-          .select('id, vendor_id (name)')
-          .in(
-            'vendor_id',
-            vendorIds.map((v) => v.id),
-          )
-          .order('updated_at', { ascending: false })
-          .range(offset, offset + ITEMS_PER_PAGE - 1);
+      let { data: matchingContracts, error: contractsError } = await supabase
+        .from('contracts')
+        .select('id, vendor_id (name)')
+        .in(
+          'vendor_id',
+          vendorIds.map((v) => v.id),
+        )
+        .order('updated_at', { ascending: false })
+        .range(offset, offset + ITEMS_PER_PAGE - 1);
 
       if (contractsError) {
         console.error('Supabase Error:', contractsError);
@@ -149,7 +145,7 @@ export async function fetchFilteredContracts(
       }
     } else {
       // Fetch all contracts if no query is specified
-      let { data: allContracts, error } = await supabaseClient
+      let { data: allContracts, error } = await supabase
         .from('contracts')
         .select('id, vendor_id (name)')
         .order('updated_at', { ascending: false })
@@ -178,7 +174,7 @@ export async function fetchFilteredContracts(
 export async function fetchContractsPages(query: string): Promise<number> {
   noStore();
   try {
-    let { count } = await supabaseClient
+    let { count } = await supabase
       .from('contracts')
       .select('id', { count: 'exact', head: true });
 
@@ -195,7 +191,7 @@ export async function fetchContractsPages(query: string): Promise<number> {
 export async function fetchContractById(id: string) {
   noStore();
   try {
-    let { data: contract, error } = await supabaseClient
+    let { data: contract, error } = await supabase
       .from('contracts')
       .select('*, vendor_id (*)')
       .eq('id', id)
@@ -216,7 +212,7 @@ export async function fetchContractById(id: string) {
 export async function fetchContractDocumentById(id: string) {
   noStore();
   try {
-    const { data: contractDocuments, error } = await supabaseClient
+    const { data: contractDocuments, error } = await supabase
       .from('contract_documents')
       .select('*')
       .eq('contract_id', id);
@@ -236,11 +232,10 @@ export async function fetchContractDocumentById(id: string) {
 export async function fetchContractDocumentsById(id: string) {
   try {
     // Fetch contract document details
-    const { data: contractDocuments, error: documentsError } =
-      await supabaseClient
-        .from('contract_documents')
-        .select('*')
-        .eq('contract_id', id);
+    const { data: contractDocuments, error: documentsError } = await supabase
+      .from('contract_documents')
+      .select('*')
+      .eq('contract_id', id);
 
     if (documentsError) {
       console.error('Error fetching contract documents:', documentsError);
@@ -256,7 +251,7 @@ export async function fetchContractDocumentsById(id: string) {
     const documentsWithSignedUrls = await Promise.all(
       contractDocuments.map(async (document) => {
         const { data: signedUrlData, error: signedUrlError } =
-          await supabaseClient.storage
+          await supabase.storage
             .from('contracts') // Replace with your actual bucket name
             .createSignedUrl(document.file_path, 60 * 60); // URL expiry time in seconds
 
