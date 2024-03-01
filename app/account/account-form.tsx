@@ -61,8 +61,12 @@ export default function AccountForm({ user }: { user: User | null }) {
     try {
       setLoading(true);
 
+      if (!user?.id) {
+        throw new Error('User ID is undefined');
+      }
+
       const { error } = await supabase.from('profiles').upsert({
-        id: user?.id as string,
+        id: user.id as string,
         full_name: fullname,
         username,
         website,
