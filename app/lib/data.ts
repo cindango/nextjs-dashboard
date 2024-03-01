@@ -1,4 +1,5 @@
 import { sql } from '@vercel/postgres';
+import { createClient } from '@supabase/supabase-js';
 import {
   CustomerField,
   CustomersTableType,
@@ -9,21 +10,23 @@ import {
   Revenue,
 } from './definitions';
 import { formatCurrency } from './utils';
+import { unstable_noStore as noStore } from 'next/cache';
 
 export async function fetchRevenue() {
   // Add noStore() here prevent the response from being cached.
   // This is equivalent to in fetch(..., {cache: 'no-store'}).
+  noStore();
 
   try {
     // Artificially delay a response for demo purposes.
     // Don't do this in production :)
 
-    // console.log('Fetching revenue data...');
-    // await new Promise((resolve) => setTimeout(resolve, 3000));
+    console.log('Fetching revenue data...');
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     const data = await sql<Revenue>`SELECT * FROM revenue`;
 
-    // console.log('Data fetch completed after 3 seconds.');
+    console.log('Data fetch completed after 3 seconds.');
 
     return data.rows;
   } catch (error) {
@@ -33,6 +36,7 @@ export async function fetchRevenue() {
 }
 
 export async function fetchLatestInvoices() {
+  noStore();
   try {
     const data = await sql<LatestInvoiceRaw>`
       SELECT invoices.amount, customers.name, customers.image_url, customers.email, invoices.id
@@ -53,6 +57,7 @@ export async function fetchLatestInvoices() {
 }
 
 export async function fetchCardData() {
+  noStore();
   try {
     // You can probably combine these into a single SQL query
     // However, we are intentionally splitting them to demonstrate
@@ -87,11 +92,79 @@ export async function fetchCardData() {
   }
 }
 
+const supabaseClient = createClient(
+  process.env.SUPABASE_URL as string,
+  process.env.SUPABASE_SERVICE_ROLE_KEY as string,
+);
+
+export async function fetchFilteredInvoicesSupabase(
+  query: string,
+  currentPage: number,
+): Promise<InvoicesTable[]> {
+  noStore();
+  const offset = (currentPage - 1) * ITEMS_PER_PAGE;
+
+  let { data: contracts, error } = await supabaseClient
+    .from<InvoicesTable>('contracts')
+    .select('id, vendor_id (name)')
+    .order('updated_at', { ascending: false })
+    .range(offset, offset + ITEMS_PER_PAGE - 1);
+
+  console.log('Fetched invoices:', contracts);
+
+  if (query) {
+    let { data: vendorIds, error: vendorError } = await supabaseClient
+      .from('vendors')
+      .select('id')
+      .ilike('name', `%${query}%`);
+
+    if (vendorError) {
+      console.error('Supabase Error:', vendorError);
+      throw new Error('Failed to fetch vendor IDs from Supabase.');
+    }
+
+    const vendorIdQuery = vendorIds.map((vendor) => vendor.id).join(', ');
+
+    // If there are matching vendors, fetch their contracts
+    if (vendorIds.length > 0) {
+      let { data: matchingContracts, error: contractsError } =
+        await supabaseClient
+          .from<InvoicesTable>('contracts')
+          .select('id, vendor_id (name)')
+          .in(
+            'vendor_id',
+            vendorIds.map((v) => v.id),
+          )
+          .order('updated_at', { ascending: false })
+          .range(offset, offset + ITEMS_PER_PAGE - 1);
+
+      if (contractsError) {
+        console.error('Supabase Error:', contractsError);
+        throw new Error('Failed to fetch matching contracts from Supabase.');
+      }
+
+      contracts = matchingContracts;
+    } else {
+      // If no vendors match the query, return an empty array
+      contracts = [];
+    }
+  }
+
+  if (error) {
+    console.error('Supabase Error:', error);
+    throw new Error('Failed to fetch invoices from Supabase.');
+  }
+
+  return contracts;
+}
+
 const ITEMS_PER_PAGE = 6;
+
 export async function fetchFilteredInvoices(
   query: string,
   currentPage: number,
 ) {
+  noStore();
   const offset = (currentPage - 1) * ITEMS_PER_PAGE;
 
   try {
@@ -122,8 +195,111 @@ export async function fetchFilteredInvoices(
     throw new Error('Failed to fetch invoices.');
   }
 }
+export async function fetchInvoicesPagesSupabase(
+  query: string,
+): Promise<number> {
+  noStore();
+  try {
+    let { count } = await supabaseClient
+      .from('contracts')
+      .select('id', { count: 'exact', head: true });
+
+    const totalPages = Math.ceil(count / ITEMS_PER_PAGE);
+    return totalPages;
+  } catch (error) {
+    console.error('Supabase Error:', error);
+    throw new Error(
+      'Failed to fetch total number of invoice pages from Supabase.',
+    );
+  }
+}
+
+export async function fetchContractById(id: string) {
+  noStore();
+  try {
+    let { data: contract, error } = await supabaseClient
+      .from('contracts')
+      .select('*, vendor_id (*)')
+      .eq('id', id)
+      .single();
+
+    if (error) {
+      console.error('Supabase Error:', error);
+      throw new Error('Failed to fetch contract from Supabase.');
+    }
+
+    return contract;
+  } catch (error) {
+    console.error('Supabase Error:', error);
+    throw new Error('Failed to fetch contract by ID.');
+  }
+}
+
+export async function fetchContractDocumentById(id: string) {
+  noStore();
+  try {
+    const { data: contractDocuments, error } = await supabaseClient
+      .from('contract_documents')
+      .select('*')
+      .eq('contract_id', id);
+
+    if (error) {
+      console.error('Supabase Error:', error);
+      throw new Error('Failed to fetch contract document from Supabase.');
+    }
+
+    return contractDocuments;
+  } catch (error) {
+    console.error('Supabase Error:', error);
+    throw new Error('Failed to fetch contract document by ID.');
+  }
+}
+
+export async function fetchContractDocumentsById(id: string) {
+  try {
+    // Fetch contract document details
+    const { data: contractDocuments, error: documentsError } =
+      await supabaseClient
+        .from('contract_documents')
+        .select('*')
+        .eq('contract_id', id);
+
+    if (documentsError) {
+      console.error('Error fetching contract documents:', documentsError);
+      throw new Error('Failed to fetch contract documents from Supabase.');
+    }
+
+    // If no documents are found, return or handle appropriately
+    if (!contractDocuments || contractDocuments.length === 0) {
+      throw new Error('No contract documents found with the given ID.');
+    }
+
+    // Generate signed URLs for each document
+    const documentsWithSignedUrls = await Promise.all(
+      contractDocuments.map(async (document) => {
+        const { data: signedUrlData, error: signedUrlError } =
+          await supabaseClient.storage
+            .from('contracts') // Replace with your actual bucket name
+            .createSignedUrl(document.file_path, 60 * 60); // URL expiry time in seconds
+
+        if (signedUrlError) {
+          console.error('Error generating signed URL:', signedUrlError);
+          return { ...document, signedUrl: null }; // Decide how you want to handle errors
+        }
+
+        return { ...document, signedUrl: signedUrlData.signedUrl };
+      }),
+    );
+
+    return documentsWithSignedUrls;
+  } catch (error) {
+    console.error('Supabase Error:', error);
+    throw error; // Re-throw the error to be handled by the caller
+  }
+}
 
 export async function fetchInvoicesPages(query: string) {
+  noStore();
   try {
     const count = await sql`SELECT COUNT(*)
     FROM invoices
@@ -145,6 +321,7 @@ export async function fetchInvoicesPages(query: string) {
 }
 
 export async function fetchInvoiceById(id: string) {
+  noStore();
   try {
     const data = await sql<InvoiceForm>`
       SELECT
@@ -170,6 +347,7 @@ export async function fetchInvoiceById(id: string) {
 }
 
 export async function fetchCustomers() {
+  noStore();
   try {
     const data = await sql<CustomerField>`
       SELECT
@@ -188,6 +366,7 @@ export async function fetchCustomers() {
 }
 
 export async function fetchFilteredCustomers(query: string) {
+  noStore();
   try {
     const data = await sql<CustomersTableType>`
 		SELECT
@@ -221,6 +400,7 @@ export async function fetchFilteredCustomers(query: string) {
 }
 
 export async function getUser(email: string) {
+  noStore();
   try {
     const user = await sql`SELECT * FROM users WHERE email=${email}`;
     return user.rows[0] as User;
